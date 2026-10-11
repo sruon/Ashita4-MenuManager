@@ -1,0 +1,36 @@
+# Builds the library and runs its tests against the newest Ashita v4 release's SDK.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ashita SDK
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh api 'repos/AshitaXI/Ashita-v4beta/releases?per_page=1' --jq '.[0].tag_name'
+          git clone -q --filter=blob:none --no-checkout https://github.com/AshitaXI/Ashita-v4beta.git ashita
+          git -C ashita sparse-checkout set plugins/sdk
+          git -C ashita checkout -q $release
+          "ASHITA4_SDK_PATH=${{ github.workspace }}\ashita\plugins\sdk" >> $env:GITHUB_ENV
+          "Ashita $release"
+
+      - name: Build and test
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\VC\Auxiliary\Build\vcvars32.bat" >nul
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release || exit /b 1
+          cmake --build build || exit /b 1
+          build\menumanager_tests.exe
